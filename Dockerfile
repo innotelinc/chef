@@ -1,10 +1,16 @@
-# Atlas Chef — dev-mode container for `make chef-up`.
+# Atlas Chef — production container for `make chef-up` (fork workstream 3b.3).
 #
-# The Chef auth fork runs `remix vite:dev` pinned to 0.0.0.0:4310
-# (vite.config.ts `server` block); the compose `chef` service maps
-# 127.0.0.1:4310 -> 4310 and injects the CHEF_OIDC_*/CONVEX_* envs at
-# runtime. Production serve (pnpm build + remix-serve) is fork workstream
-# 3b.3 and not baselined yet — see docs/chef-auth-fork.md.
+# `pnpm build` (remix vite:build) runs at image build time and the result is
+# served by remix-serve (`pnpm start`) at runtime, so the chef container is a
+# real service rather than a dev-mode `remix vite:dev` process. The compose
+# `chef` service maps 127.0.0.1:4310 -> 4310 and injects the server-side
+# CHEF_OIDC_*/CONVEX_*/model-key envs at runtime.
+#
+# Client-side envs (VITE_*) are inlined at BUILD time by remix/vite, so the
+# ones the fork needs are build args with the same defaults as the compose
+# service's runtime env lines (docker-compose.yml `chef` service). The
+# hosted-plane envs (VITE_PROVISION_HOST) keep their defaults until fork
+# workstream 3b.2 localizes provisioning; see docs/chef-auth-fork.md.
 FROM node:22-slim
 
 # corepack supplies pnpm@9.5.0 from the packageManager field.
@@ -12,7 +18,7 @@ RUN corepack enable
 
 WORKDIR /app
 
-# Copy the full checkout; .dockerignore keeps node_modules/.git out.
+# Copy the full checkout; .dockerignore keeps node_modules/.git/.env* out.
 COPY . .
 
 # Host .env.local carries real secrets and is excluded by .dockerignore —
@@ -22,10 +28,25 @@ COPY . .
 RUN touch .env.local
 
 # pnpm install (frozen first; plain fallback if the lockfile drifted).
-RUN pnpm install --frozen-lockfile || pnpm install
+# child-concurrency + a capped heap keep install viable on memory-constrained
+# hosts (the full checkout is a large dep tree; parallel extraction OOMs).
+ENV NODE_OPTIONS=--max-old-space-size=3072
+RUN pnpm install --frozen-lockfile --child-concurrency=2 \
+    || pnpm install --child-concurrency=2
+
+# Client-side env inlined by `remix vite:build` (build args, see above).
+ARG VITE_CONVEX_URL=http://127.0.0.1:3210
+ARG VITE_PROVISION_HOST=https://api.convex.dev
+ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
+ENV VITE_PROVISION_HOST=$VITE_PROVISION_HOST
+
+# Production build (remix vite:build -> build/server/index.js + build/client).
+RUN pnpm build
+
+ENV NODE_ENV=production
+ENV PORT=4310
 
 EXPOSE 4310
 
-ENV PORT=4310
-
-CMD ["pnpm", "dev"]
+# remix-serve honors $PORT; the compose service pins it to CHEF_PORT.
+CMD ["pnpm", "start"]
