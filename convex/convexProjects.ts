@@ -423,6 +423,159 @@ export const disconnectConvexProject = mutation({
   },
 });
 
+// ── Fork 3b.2 — local provisioning (deployment-per-app) ─────────────────────
+// When CHEF_PROVISION_URL is set on the Convex backend, projects are created
+// by the chef-provisioner service (one convex-backend container per app,
+// chef-provisioner/server.mjs in the atlas repo) instead of the hosted
+// control plane. No team/workos token is involved: ownership comes from the
+// Authentik identity already bound to the session.
+export function localProvisioningEnabled() {
+  return Boolean(process.env.CHEF_PROVISION_URL);
+}
+
+function provisionRequestHeaders() {
+  const token = process.env.CHEF_PROVISION_TOKEN ?? "";
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+/** Create (or return) the per-app backend via the provisioner. */
+export const provisionLocalBackend = internalAction({
+  args: {
+    projectSlug: v.string(),
+    projectName: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const base = ensureEnvVar("CHEF_PROVISION_URL").replace(/\/+$/, "");
+    const response = await fetch(`${base}/projects`, {
+      method: "POST",
+      headers: provisionRequestHeaders(),
+      body: JSON.stringify({ slug: args.projectSlug, name: args.projectName }),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ConvexError({
+        code: "ProvisioningError",
+        message: `Failed to create project backend: ${response.status}`,
+        details: text,
+      });
+    }
+    let data: {
+      deploymentUrl: string;
+      deploymentName: string;
+      adminKey: string;
+    };
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new ConvexError({
+        code: "ProvisioningError",
+        message: "Provisioner returned an invalid response",
+        details: text,
+      });
+    }
+    return {
+      projectSlug: args.projectSlug,
+      deploymentUrl: data.deploymentUrl,
+      deploymentName: data.deploymentName,
+      projectDeployKey: data.adminKey,
+      warningMessage: undefined as string | undefined,
+    };
+  },
+});
+
+const LOCAL_PROVISION_WAIT_MS = 90_000;
+
+export const startProvisionLocalProject = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+    chatId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await startProvisionLocalProjectHelper(ctx, args);
+  },
+});
+
+export async function startProvisionLocalProjectHelper(
+  ctx: MutationCtx,
+  args: {
+    sessionId: Id<"sessions">;
+    chatId: string;
+  },
+): Promise<void> {
+  if (!localProvisioningEnabled()) {
+    throw new ConvexError({
+      code: "ProvisioningError",
+      message: "Local provisioning is not configured (CHEF_PROVISION_URL unset)",
+    });
+  }
+  const chat = await getChatByIdOrUrlIdEnsuringAccess(ctx, { id: args.chatId, sessionId: args.sessionId });
+  if (!chat) {
+    throw new ConvexError({ code: "NotAuthorized", message: "Chat not found" });
+  }
+  const session = await ctx.db.get("sessions", args.sessionId);
+  if (!session || session.memberId === undefined) {
+    throw new ConvexError({ code: "NotAuthorized", message: "Must be logged in to connect a project" });
+  }
+
+  await ctx.scheduler.runAfter(0, internal.convexProjects.connectLocalProjectForChat, {
+    sessionId: args.sessionId,
+    chatId: args.chatId,
+  });
+  const jobId = await ctx.scheduler.runAfter(LOCAL_PROVISION_WAIT_MS, internal.convexProjects.checkConnection, {
+    sessionId: args.sessionId,
+    chatId: args.chatId,
+  });
+  await ctx.db.patch("chats", chat._id, {
+    convexProject: { kind: "connecting", checkConnectionJobId: jobId },
+  });
+}
+
+export const connectLocalProjectForChat = internalAction({
+  args: {
+    sessionId: v.id("sessions"),
+    chatId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Stable per-chat slug so a retry reuses the same backend container.
+    const chatIdDigits = args.chatId.replace(/[^a-z0-9]/gi, "").slice(0, 16) || "proj";
+    const projectSlug = `chef-${chatIdDigits}`;
+    try {
+      let projectName = await ctx.runQuery(internal.convexProjects.getProjectName, {
+        sessionId: args.sessionId,
+        chatId: args.chatId,
+      });
+      if (!projectName) {
+        projectName = "My Project (Chef)";
+      }
+      const data = await ctx.runAction(internal.convexProjects.provisionLocalBackend, {
+        projectSlug,
+        projectName,
+      });
+      await ctx.runMutation(internal.convexProjects.recordProvisionedConvexProjectCredentials, {
+        sessionId: args.sessionId,
+        chatId: args.chatId,
+        projectSlug: data.projectSlug,
+        teamSlug: "local",
+        projectDeployKey: data.projectDeployKey,
+        deploymentUrl: data.deploymentUrl,
+        deploymentName: data.deploymentName,
+        warningMessage: data.warningMessage,
+      });
+    } catch (error) {
+      const message = error instanceof ConvexError ? error.data?.message ?? error.message : "Unexpected error";
+      console.error(`Error connecting local convex project: ${error instanceof Error ? error.message : error}`);
+      await ctx.runMutation(internal.convexProjects.recordFailedConvexProjectConnection, {
+        sessionId: args.sessionId,
+        chatId: args.chatId,
+        errorMessage: message,
+      });
+    }
+  },
+});
+
 export function ensureEnvVar(name: string) {
   if (!process.env[name]) {
     throw new Error(`Environment variable ${name} is not set`);

@@ -12,7 +12,11 @@ import { ConvexError, v } from "convex/values";
 import type { Infer } from "convex/values";
 import { isValidSession } from "./sessions";
 import type { Doc, Id } from "./_generated/dataModel";
-import { ensureEnvVar, startProvisionConvexProjectHelper } from "./convexProjects";
+import {
+  ensureEnvVar,
+  startProvisionConvexProjectHelper,
+  localProvisioningEnabled,
+} from "./convexProjects";
 import { internal } from "./_generated/api";
 import { assertIsConvexAdmin } from "./admin";
 
@@ -625,8 +629,31 @@ async function tryDeleteProject(args: {
   accessToken: string;
 }): Promise<{ kind: "success" } | { kind: "error"; error: string }> {
   const { teamSlug, projectSlug, accessToken } = args;
-  if (teamSlug === undefined || projectSlug === undefined) {
-    return { kind: "error", error: "Team slug and project slug are required to delete a Convex project" };
+  if (projectSlug === undefined) {
+    return { kind: "error", error: "Project slug is required to delete a Convex project" };
+  }
+
+  // Fork 3b.2 local mode: the per-app backend container is owned by the
+  // chef-provisioner service — no team/workos token involved.
+  if (localProvisioningEnabled()) {
+    const base = ensureEnvVar("CHEF_PROVISION_URL").replace(/\/+$/, "");
+    const token = process.env.CHEF_PROVISION_TOKEN ?? "";
+    const response = await fetch(`${base}/projects/${encodeURIComponent(projectSlug)}`, {
+      method: "DELETE",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        kind: "error",
+        error: `Failed to delete local project backend: ${response.status} ${text}`,
+      };
+    }
+    return { kind: "success" };
+  }
+
+  if (teamSlug === undefined) {
+    return { kind: "error", error: "Team slug is required to delete a Convex project" };
   }
 
   const bigBrainHost = ensureEnvVar("BIG_BRAIN_HOST");
