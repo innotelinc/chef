@@ -25,7 +25,7 @@ type DeployStatus =
   | { type: 'zipping' }
   | { type: 'deploying' }
   | { type: 'error'; message: string }
-  | { type: 'success'; updateCounter: number };
+  | { type: 'success'; updateCounter: number; siteUrl?: string };
 
 export function DeployButton() {
   const [status, setStatus] = useState<DeployStatus>({ type: 'idle' });
@@ -53,6 +53,7 @@ export function DeployButton() {
   };
 
   const handleDeploy = async () => {
+    let localSiteUrl: string | undefined;
     try {
       setStatus({ type: 'building' });
       const container = await webcontainer;
@@ -74,6 +75,8 @@ export function DeployButton() {
       formData.append('file', zipBlob, 'dist.zip');
       formData.append('deploymentName', convex!.deploymentName);
       formData.append('token', convex!.token);
+      // Fork 3b.2 deploy target: the per-project site slug for local hosting.
+      formData.append('projectSlug', convex!.projectSlug);
 
       const response = await fetch('/api/deploy-simple', {
         method: 'POST',
@@ -89,9 +92,12 @@ export function DeployButton() {
       if (resp.localDevWarning) {
         toast.error(`${resp.localDevWarning}`);
       }
+      if (resp.siteUrl) {
+        localSiteUrl = resp.siteUrl as string;
+      }
 
       const updateCounter = getFileUpdateCounter();
-      setStatus({ type: 'success', updateCounter });
+      setStatus({ type: 'success', updateCounter, siteUrl: localSiteUrl });
       await recordDeploy({ id: chatId, sessionId });
     } catch (error) {
       toast.error('Failed to deploy. Please try again.');
@@ -162,7 +168,9 @@ export function DeployButton() {
       </Button>
       {status.type === 'success' && convex && (
         <Button
-          href={`https://${convex.deploymentName}.convex.app`}
+          // Fork 3b.2: locally hosted site when the deploy returned one;
+          // hosted convex.app otherwise.
+          href={status.siteUrl ?? `https://${convex.deploymentName}.convex.app`}
           target="_blank"
           size="xs"
           icon={<ExternalLinkIcon />}

@@ -8,6 +8,7 @@ export async function deploy({ request }: ActionFunctionArgs) {
     const file = formData.get('file') as File;
     const deploymentName = formData.get('deploymentName') as string;
     const token = formData.get('token') as string;
+    const projectSlug = formData.get('projectSlug') as string | null;
     let chefDeploySecret: string | undefined;
 
     if (globalThis.process.env.CHEF_DEPLOY_SECRET) {
@@ -20,6 +21,36 @@ export async function deploy({ request }: ActionFunctionArgs) {
 
     if (!token || !deploymentName) {
       return json({ error: 'Missing authentication or deployment info' }, { status: 400 });
+    }
+
+    // Fork 3b.2 deploy target — when CHEF_PROVISION_URL is set, the generated
+    // app's static build is uploaded to its per-project site hosted by
+    // chef-provisioner + chef-sites (nginx) on this host, not to the hosted
+    // convex.app CDN.
+    const PROVISION_URL = globalThis.process.env.CHEF_PROVISION_URL;
+    if (PROVISION_URL) {
+      const siteSlug = projectSlug || deploymentName.replace(/^chef-proj-/, '');
+      const siteResponse = await fetch(`${PROVISION_URL.replace(/\/+$/, '')}/sites/${siteSlug}`, {
+        method: 'POST',
+        headers: {
+          ...(globalThis.process.env.CHEF_PROVISION_TOKEN
+            ? { Authorization: `Bearer ${globalThis.process.env.CHEF_PROVISION_TOKEN}` }
+            : {}),
+        },
+        body: file,
+      });
+      const siteText = await siteResponse.text();
+      if (!siteResponse.ok) {
+        console.error('Local site deploy failed:', siteText);
+        return json({ error: `Local site deploy failed: ${siteText}` }, { status: siteResponse.status });
+      }
+      const site = JSON.parse(siteText) as { siteUrl?: string; files?: number };
+      return json({
+        siteUrl: site.siteUrl,
+        files: site.files,
+        deploymentName,
+        localDeploy: true as const,
+      });
     }
 
     const PROVISION_HOST = globalThis.process.env.PROVISION_HOST || 'https://api.convex.dev';
