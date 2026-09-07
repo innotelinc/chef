@@ -7,7 +7,7 @@ import { setProfile } from '~/lib/stores/profile';
 import { getConvexProfile } from '~/lib/convexProfile';
 import { useLDClient, withLDProvider, basicLogger } from 'launchdarkly-react-client-sdk';
 import { api } from '@convex/_generated/api';
-import { useAuth } from '@workos-inc/authkit-react';
+import { useAuth } from '~/lib/auth/context';
 
 export const UserProvider = withLDProvider<any>({
   clientSideID: import.meta.env.VITE_LD_CLIENT_SIDE_ID,

@@ -36,7 +36,7 @@ import { captureException } from '@sentry/remix';
 import { Menu as MenuComponent, MenuItem as MenuItemComponent } from '@ui/Menu';
 import { PencilSquareIcon } from '@heroicons/react/24/outline';
 import { ChatBubbleLeftIcon, DocumentArrowUpIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
-import { useAuth } from '@workos-inc/authkit-react';
+import { useAuth } from '~/lib/auth/context';
 import { useConvex } from 'convex/react';
 
 const PROMPT_LENGTH_WARNING_THRESHOLD = 2000;

@@ -21,7 +21,7 @@ import { useSelectedTeamSlug } from '~/lib/stores/convexTeams';
 import { useUsage } from '~/lib/stores/usage';
 import { useReferralStats } from '~/lib/hooks/useReferralCode';
 import { Menu } from '~/components/sidebar/Menu.client';
-import { useAuth } from '@workos-inc/authkit-react';
+import { useAuth } from '~/lib/auth/context';
 
 export function Header({ hideSidebarIcon = false }: { hideSidebarIcon?: boolean }) {
   const chat = useStore(chatStore);

@@ -8,7 +8,7 @@ import { useChefAuth } from '~/components/chat/ChefAuthWrapper';
 import { ContainerBootState, waitForBootStepCompleted } from '~/lib/stores/containerBootState';
 import { toast } from 'sonner';
 import { waitForConvexProjectConnection } from '~/lib/stores/convexProject';
-import { useAuth } from '@workos-inc/authkit-react';
+import { useAuth } from '~/lib/auth/context';
 
 const CREATE_PROJECT_TIMEOUT = 15000;
 

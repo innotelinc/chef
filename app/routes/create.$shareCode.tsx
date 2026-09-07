@@ -16,7 +16,7 @@ import type { MetaFunction } from '@vercel/remix';
 import { Button } from '@ui/Button';
 import { ConvexError } from 'convex/values';
 import { Sheet } from '@ui/Sheet';
-import { useAuth } from '@workos-inc/authkit-react';
+import { useAuth } from '~/lib/auth/context';
 export const meta: MetaFunction = () => {
   return [
     { title: 'Cooked with Chef' },

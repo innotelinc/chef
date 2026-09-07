@@ -10,9 +10,8 @@ import { useEffect, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { ClientOnly } from 'remix-utils/client-only';
-import { AuthKitProvider, useAuth } from '@workos-inc/authkit-react';
-import { ConvexProviderWithAuthKit } from '@convex-dev/workos';
 import { ConvexReactClient } from 'convex/react';
+import { AuthProvider } from '~/lib/auth/context';
 import globalStyles from './styles/index.css?url';
 import '@convex-dev/design-system/styles/shared.css';
 import xtermStyles from '@xterm/xterm/css/xterm.css?url';
@@ -30,8 +29,22 @@ export async function loader() {
   const CONVEX_OAUTH_CLIENT_ID = globalThis.process.env.CONVEX_OAUTH_CLIENT_ID!;
   const WORKOS_REDIRECT_URI =
     globalThis.process.env.VITE_WORKOS_REDIRECT_URI || globalThis.process.env.VERCEL_BRANCH_URL!;
+  // Chef auth fork: when CHEF_OIDC_ISSUER_URL is set the app logs in against
+  // Cerulean Authentik (server /api/auth/* flow); otherwise upstream WorkOS.
+  const AUTH_MODE =
+    globalThis.process.env.CHEF_OIDC_ISSUER_URL &&
+    globalThis.process.env.CHEF_OIDC_CLIENT_ID
+      ? ("authentik" as const)
+      : ("workos" as const);
   return json({
-    ENV: { CONVEX_URL, CONVEX_OAUTH_CLIENT_ID, WORKOS_REDIRECT_URI },
+    ENV: {
+      CONVEX_URL,
+      CONVEX_OAUTH_CLIENT_ID,
+      WORKOS_REDIRECT_URI,
+      AUTH_MODE,
+      CHEF_OIDC_ISSUER_URL: globalThis.process.env.CHEF_OIDC_ISSUER_URL ?? "",
+      CHEF_OIDC_CLIENT_ID: globalThis.process.env.CHEF_OIDC_CLIENT_ID ?? "",
+    },
   });
 }
 
@@ -136,25 +149,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   useVersionNotificationBanner();
 
+  const loaderEnv = (loaderData as { ENV?: Record<string, string> } | undefined)?.ENV;
+  const authMode: "authentik" | "workos" =
+    loaderEnv?.AUTH_MODE === "authentik" ? "authentik" : "workos";
+
   return (
     <>
-      <AuthKitProvider
-        clientId={import.meta.env.VITE_WORKOS_CLIENT_ID}
-        redirectUri={globalThis.process.env.WORKOS_REDIRECT_URI}
-        apiHostname={import.meta.env.VITE_WORKOS_API_HOSTNAME}
-      >
-        <ClientOnly>
-          {() => {
-            return (
-              <DndProvider backend={HTML5Backend}>
-                <ConvexProviderWithAuthKit client={convex} useAuth={useAuth}>
-                  {children}
-                </ConvexProviderWithAuthKit>
-              </DndProvider>
-            );
-          }}
-        </ClientOnly>
-      </AuthKitProvider>
+      <ClientOnly>
+        {() => {
+          return (
+            <DndProvider backend={HTML5Backend}>
+              <AuthProvider mode={authMode} convex={convex}>
+                {children}
+              </AuthProvider>
+            </DndProvider>
+          );
+        }}
+      </ClientOnly>
 
       <ScrollRestoration />
       <Scripts />
