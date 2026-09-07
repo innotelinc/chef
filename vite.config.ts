@@ -90,7 +90,10 @@ export default defineConfig((config) => {
       },
     },
     server: {
-      host: '127.0.0.1',
+      // Atlas auth fork: the compose `chef` service publishes 127.0.0.1:4310
+      // and the container must listen on all interfaces + the Chef port.
+      host: '0.0.0.0',
+      port: 4310,
       // feel free to disable, just using this to foolproof dev
       strictPort: true,
     },
