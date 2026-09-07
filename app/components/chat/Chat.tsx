@@ -251,6 +251,11 @@ export const Chat = memo(
           console.error('No team slug');
           return; // Just return instead of throwing
         }
+        // Fork 3b.2 — deployment-per-app: the synthetic "local" team has no
+        // hosted token quota to check against the provision host.
+        if (teamSlug === 'local') {
+          return;
+        }
         const token = getConvexAuthToken(convex);
         if (!token) {
           console.error('No token');

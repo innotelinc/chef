@@ -94,7 +94,14 @@ onMount(serverTeamUsageStore, () => {
     }
     const observer = new QueryObserver<UsageData>(queryClientStore.get(), {
       queryKey: ['teamUsage', teamSlug],
-      queryFn: async () => await getTokenUsage(VITE_PROVISION_HOST, convexAuthTokenStore.get()!, teamSlug),
+      queryFn: async () => {
+        // Fork 3b.2 — the synthetic "local" team has no hosted quota; there is
+        // nothing to fetch from the provision host.
+        if (teamSlug === 'local') {
+          return { centitokensUsed: 0, centitokensQuota: 0, isPaidPlan: true };
+        }
+        return await getTokenUsage(VITE_PROVISION_HOST, convexAuthTokenStore.get()!, teamSlug);
+      },
       // TODO instead of fetching so much, refetch when know some tokens were just used
       refetchInterval: 10 * 60 * 1000,
     });

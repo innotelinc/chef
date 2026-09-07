@@ -1,6 +1,6 @@
 import { selectedTeamSlugStore, waitForSelectedTeamSlug } from '~/lib/stores/convexTeams';
 
-import { useConvex } from 'convex/react';
+import { useConvex, useQuery } from 'convex/react';
 import { getConvexAuthToken, waitForConvexSessionId } from '~/lib/stores/sessionId';
 import { useCallback } from 'react';
 import { api } from '@convex/_generated/api';
@@ -17,12 +17,42 @@ export function useHomepageInitializeChat(chatId: string, setChatInitialized: (c
   const { signIn } = useAuth();
   const chefAuthState = useChefAuth();
   const isFullyLoggedIn = chefAuthState.kind === 'fullyLoggedIn';
+  const localProvisioning = useQuery(api.convexProjects.isLocalProvisioningEnabled);
   return useCallback(async () => {
     if (!isFullyLoggedIn) {
       signIn();
       return false;
     }
     const sessionId = await waitForConvexSessionId('useInitializeChat');
+    if (localProvisioning) {
+      // Fork 3b.2 — deployment-per-app: initialize the chat without a team /
+      // workos token; the backend provisions a per-app Convex project.
+      await convex.mutation(api.messages.initializeChat, {
+        id: chatId,
+        sessionId,
+      });
+      try {
+        await Promise.race([
+          waitForConvexProjectConnection(),
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('Connection timeout'));
+            }, CREATE_PROJECT_TIMEOUT);
+          }),
+        ]);
+        setChatInitialized(true);
+      } catch (error) {
+        console.error('Failed to create Convex project:', error);
+        if (error instanceof Error && error.message === 'Connection timeout') {
+          toast.error('Connection timed out. Please try again.');
+        } else {
+          toast.error('Failed to create Convex project. Please try again.');
+        }
+        return false;
+      }
+      await waitForBootStepCompleted(ContainerBootState.LOADING_SNAPSHOT);
+      return true;
+    }
     const selectedTeamSlug = selectedTeamSlugStore.get();
     if (selectedTeamSlug === null) {
       // If the user hasn't selected a team, don't initialize the chat.
@@ -73,13 +103,22 @@ export function useHomepageInitializeChat(chatId: string, setChatInitialized: (c
     // Wait for the WebContainer to have its snapshot loaded before sending a message.
     await waitForBootStepCompleted(ContainerBootState.LOADING_SNAPSHOT);
     return true;
-  }, [convex, chatId, isFullyLoggedIn, setChatInitialized, signIn]);
+  }, [convex, chatId, isFullyLoggedIn, localProvisioning, setChatInitialized, signIn]);
 }
 
 export function useExistingInitializeChat(chatId: string) {
   const convex = useConvex();
+  const localProvisioning = useQuery(api.convexProjects.isLocalProvisioningEnabled);
   return useCallback(async () => {
     const sessionId = await waitForConvexSessionId('useInitializeChat');
+    if (localProvisioning) {
+      // Fork 3b.2 — deployment-per-app: no team/workos token needed.
+      await convex.mutation(api.messages.initializeChat, {
+        id: chatId,
+        sessionId,
+      });
+      return true;
+    }
     const teamSlug = await waitForSelectedTeamSlug('useInitializeChat');
     const workosAccessToken = getConvexAuthToken(convex);
     if (!workosAccessToken) {
@@ -100,5 +139,5 @@ export function useExistingInitializeChat(chatId: string) {
     // We don't need to wait for container boot here since we don't mount
     // the UI until it's fully ready.
     return true;
-  }, [convex, chatId]);
+  }, [convex, chatId, localProvisioning]);
 }

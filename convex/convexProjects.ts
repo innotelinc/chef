@@ -12,6 +12,15 @@ import { getChatByIdOrUrlIdEnsuringAccess } from "./messages";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
+/** Fork 3b.2 — client-visible mode switch: true when this backend provisions
+ * per-app backends through chef-provisioner instead of the hosted control
+ * plane (i.e. `CHEF_PROVISION_URL` is set on the Convex backend). */
+export const isLocalProvisioningEnabled = query({
+  args: {},
+  returns: v.boolean(),
+  handler: () => localProvisioningEnabled(),
+});
+
 export const hasConnectedConvexProject = query({
   args: {
     sessionId: v.id("sessions"),
@@ -121,6 +130,17 @@ export async function startProvisionConvexProjectHelper(
   }
   if (session.memberId === undefined) {
     throw new ConvexError({ code: "NotAuthorized", message: "Must be logged in to connect a project" });
+  }
+  // Fork 3b.2 — deployment-per-app: when CHEF_PROVISION_URL is set on this
+  // backend, provisioning goes through chef-provisioner (one convex-backend
+  // container per app) and needs no team or WorkOS token, so callers omit
+  // projectInitParams.
+  if (localProvisioningEnabled()) {
+    await startProvisionLocalProjectHelper(ctx, {
+      sessionId: args.sessionId,
+      chatId: args.chatId,
+    });
+    return;
   }
   // OAuth flow
   if (args.projectInitParams === undefined) {

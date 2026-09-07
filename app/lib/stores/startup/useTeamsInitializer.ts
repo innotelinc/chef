@@ -4,14 +4,24 @@ import { getConvexAuthToken, waitForConvexSessionId } from '~/lib/stores/session
 import { getStoredTeamSlug, setSelectedTeamSlug } from '~/lib/stores/convexTeams';
 import { toast } from 'sonner';
 import type { ConvexReactClient } from 'convex/react';
-import { useConvex } from 'convex/react';
+import { useConvex, useQuery } from 'convex/react';
+import { api } from '@convex/_generated/api';
 import { VITE_PROVISION_HOST } from '~/lib/convexProvisionHost';
 
 export function useTeamsInitializer() {
   const convex = useConvex();
+  const localProvisioning = useQuery(api.convexProjects.isLocalProvisioningEnabled);
   useEffect(() => {
+    if (localProvisioning) {
+      // Fork 3b.2 — deployment-per-app: there are no hosted Convex teams. Seed
+      // a synthetic "local" team so the chat/usage code paths that read
+      // selectedTeamSlug keep working without any api.convex.dev call.
+      convexTeamsStore.set([{ id: 'local', name: 'Local Convex', slug: 'local', referralCode: '' }]);
+      setSelectedTeamSlug('local');
+      return;
+    }
     void fetchTeams(convex);
-  }, [convex]);
+  }, [convex, localProvisioning]);
 }
 
 async function fetchTeams(convex: ConvexReactClient) {

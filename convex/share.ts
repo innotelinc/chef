@@ -128,7 +128,7 @@ export async function cloneShow(
   }: {
     showCode: string;
     sessionId: Id<"sessions">;
-    projectInitParams: { teamSlug: string; workosAccessToken: string };
+    projectInitParams?: { teamSlug: string; workosAccessToken: string };
   },
 ): Promise<{ id: string; description?: string }> {
   const show = await ctx.db
@@ -211,10 +211,14 @@ export const clone = mutation({
   args: {
     shareCode: v.string(),
     sessionId: v.id("sessions"),
-    projectInitParams: v.object({
-      teamSlug: v.string(),
-      workosAccessToken: v.string(),
-    }),
+    // Fork 3b.2: optional — deployment-per-app callers omit it and the
+    // provisioning dispatcher routes to chef-provisioner.
+    projectInitParams: v.optional(
+      v.object({
+        teamSlug: v.string(),
+        workosAccessToken: v.string(),
+      }),
+    ),
   },
   returns: v.object({
     id: v.string(),

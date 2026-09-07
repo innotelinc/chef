@@ -61,14 +61,27 @@ describe("pkce", () => {
 });
 
 describe("authorizationUrl", () => {
-  it("includes code challenge, state, and requested scopes", () => {
-    const { url, verifier, state } = authorizationUrl({
+  it("includes code challenge, state, and requested scopes", async () => {
+    // Authentik serves authorize at the generic /application/o/authorize/
+    // endpoint (issuer/jwks stay per-application) — mirror the live provider.
+    const AUTH_BASE = "https://auth.cerulean.innotel.us";
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        jsonResponse({
+          issuer: ISSUER,
+          authorization_endpoint: `${AUTH_BASE}/application/o/authorize/`,
+          token_endpoint: `${AUTH_BASE}/application/o/token/`,
+          jwks_uri: `${ISSUER}jwks/`,
+        }),
+    );
+    const { url, verifier, state } = await authorizationUrl({
       issuer: ISSUER,
       clientId: CLIENT_ID,
       redirectUri: REDIRECT,
     });
     const u = new URL(url);
-    expect(url).toContain(`${ISSUER}authorize/`);
+    expect(url).toContain(`${AUTH_BASE}/application/o/authorize/`);
     assert.equal(u.searchParams.get("response_type"), "code");
     assert.equal(u.searchParams.get("client_id"), CLIENT_ID);
     assert.equal(u.searchParams.get("redirect_uri"), REDIRECT);
@@ -163,7 +176,7 @@ describe("exchangeCode / authenticate", () => {
         });
         return jsonResponse({ id_token: token });
       }
-      if (url.endsWith("/jwks")) return jsonResponse({ keys: [jwk] });
+      if (url.includes("/jwks")) return jsonResponse({ keys: [jwk] });
       throw new Error(`unexpected fetch: ${url}`);
     });
 
@@ -179,7 +192,7 @@ describe("exchangeCode / authenticate", () => {
     assert.equal(result.profile.email, "dev@innotel.us");
     assert.deepEqual(result.profile.groups, ["users", "atlas-admins"]);
     assert.equal(result.profile.isAdmin, true);
-    assert.ok(calls.some((c) => c.includes("openid-configuration")));
+    // discovery is module-cached, so only assert the token exchange happened
     assert.ok(calls.some((c) => c.includes("/token/")));
   });
 

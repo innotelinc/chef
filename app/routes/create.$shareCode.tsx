@@ -66,9 +66,25 @@ function ShareProjectContent() {
   const cloneChat = useMutation(api.share.clone);
   const convex = useConvex();
   const getShareDescription = useQuery(api.share.getShareDescription, { code: shareCode });
+  const localProvisioning = useQuery(api.convexProjects.isLocalProvisioningEnabled);
 
   const handleCloneChat = useCallback(async () => {
     const sessionId = await waitForConvexSessionId('useInitializeChat');
+    if (localProvisioning) {
+      // Fork 3b.2 — deployment-per-app: clone without a team/workos token;
+      // the backend provisions a per-app Convex project.
+      try {
+        const { id: chatId } = await cloneChat({ shareCode, sessionId });
+        window.location.href = `/chat/${chatId}`;
+      } catch (e) {
+        if (e instanceof ConvexError) {
+          toast.error(`Error cloning chat: ${e.data.message}`);
+        } else {
+          toast.error('Unexpected error cloning chat');
+        }
+      }
+      return;
+    }
     const teamSlug = await waitForSelectedTeamSlug('useInitializeChat');
     const workosAccessToken = getConvexAuthToken(convex);
     if (!workosAccessToken) {
@@ -90,7 +106,7 @@ function ShareProjectContent() {
         toast.error('Unexpected error cloning chat');
       }
     }
-  }, [convex, cloneChat, shareCode]);
+  }, [convex, cloneChat, shareCode, localProvisioning]);
 
   const selectedTeamSlug = useSelectedTeamSlug();
 

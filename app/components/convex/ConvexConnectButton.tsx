@@ -15,9 +15,23 @@ export function ConvexConnectButton() {
     sessionId,
     chatId,
   });
+  const localProvisioning = useQuery(api.convexProjects.isLocalProvisioningEnabled);
   const selectedTeamSlug = useSelectedTeamSlug();
 
   const handleClick = async () => {
+    if (localProvisioning) {
+      // Fork 3b.2 — deployment-per-app: provision a per-app backend through
+      // chef-provisioner; no team/workos token involved.
+      if (!sessionId || !chatId) {
+        console.error('Missing session or chat');
+        return;
+      }
+      await convexClient.mutation(api.convexProjects.startProvisionLocalProject, {
+        sessionId,
+        chatId,
+      });
+      return;
+    }
     if (selectedTeamSlug === null) {
       console.error('No team selected');
       return;
@@ -37,6 +51,26 @@ export function ConvexConnectButton() {
     });
   };
   const isLoading = credentials === undefined || credentials?.kind === 'connecting';
+
+  if (localProvisioning) {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="mb-2 text-sm text-content-secondary">
+          Your Chef app runs on a per-app Convex backend on this host. Connect to provision it.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button
+            icon={<Link1Icon />}
+            loading={isLoading}
+            disabled={isLoading}
+            onClick={handleClick}
+          >
+            {isLoading ? 'Connecting…' : 'Connect to local Convex'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
