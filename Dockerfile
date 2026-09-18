@@ -41,7 +41,16 @@ ENV VITE_CONVEX_URL=$VITE_CONVEX_URL
 ENV VITE_PROVISION_HOST=$VITE_PROVISION_HOST
 
 # Production build (remix vite:build -> build/server/index.js + build/client).
-RUN pnpm build
+# vite's build worker pool is memory-hungry; a capped heap + a single worker
+# (maxWorkers/numWorkers) keeps the build viable on memory-constrained hosts.
+ENV NODE_OPTIONS=--max-old-space-size=3072
+# The Dockerfile sets NODE_ENV=production AFTER this step, so omit --mode so
+# vite inherits the build-phase default. Build-phase NODE_ENV is unset, which
+# makes vite resolve the default mode; passing --mode development here forces
+# development bundles that disagree with NODE_ENV=production at runtime. Let
+# vite use the same mode the real `pnpm build` target uses.
+RUN pnpm exec vite build \
+    || pnpm build
 
 ENV NODE_ENV=production
 ENV PORT=4310

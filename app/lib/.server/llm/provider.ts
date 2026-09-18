@@ -133,6 +133,12 @@ export function getProvider(
       model = modelForProvider(modelProvider, modelChoice);
       const openai = createOpenAI({
         apiKey: userApiKey || getEnv('OPENAI_API_KEY'),
+        // Innotel fork: the platform's single OmniRoute is OpenAI-compatible, so
+        // one base URL routes codegen through the shared provider pool and Atlas
+        // holds no vendor key (docs/Integrations.md — "Model providers →
+        // OmniRoute"). Unset = upstream behavior, so a checkout with no gateway
+        // is unchanged.
+        baseURL: getEnv('CHEF_OMNIROUTE_BASE_URL') || undefined,
         fetch: userApiKey ? userKeyApiFetch('OpenAI') : fetch,
         compatibility: 'strict',
       });

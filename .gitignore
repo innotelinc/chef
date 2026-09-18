@@ -52,3 +52,6 @@ template/pnpm-lock.yaml
 .env*.local
 
 temp_envars
+
+# pnpm content-addressable store (local build cache, never committed)
+.pnpm-store/
