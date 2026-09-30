@@ -44,13 +44,24 @@ ENV VITE_PROVISION_HOST=$VITE_PROVISION_HOST
 # vite's build worker pool is memory-hungry; a capped heap + a single worker
 # (maxWorkers/numWorkers) keeps the build viable on memory-constrained hosts.
 ENV NODE_OPTIONS=--max-old-space-size=3072
-# The Dockerfile sets NODE_ENV=production AFTER this step, so omit --mode so
-# vite inherits the build-phase default. Build-phase NODE_ENV is unset, which
-# makes vite resolve the default mode; passing --mode development here forces
-# development bundles that disagree with NODE_ENV=production at runtime. Let
-# vite use the same mode the real `pnpm build` target uses.
-RUN pnpm exec vite build \
-    || pnpm build
+# `pnpm build`, which is the repo's own `remix vite:build` — NOT a bare
+# `vite build`.
+#
+# This step used to be `pnpm exec vite build || pnpm build`, and the first half
+# never finished: a bare `vite build` builds the client bundle, prints
+# `✓ built in ~20s`, and then deadlocks (every thread futex-blocked, ~400 MB RSS,
+# no further plugin activity at all) before Remix's server build begins. It was
+# reproduced on two hosts — 4 GB and 24 GB, on 4 cores and 16 — and under both the
+# buildkit and the classic builder, so it is the invocation rather than the memory
+# or the builder. The `||` fallback could never rescue it either, because a hang is
+# not a failure: nothing exits, so the right-hand side never runs. `remix
+# vite:build` builds both bundles and exits 0 in seconds.
+#
+# The Dockerfile sets NODE_ENV=production AFTER this step, so omit --mode so vite
+# inherits the build-phase default. Build-phase NODE_ENV is unset, which makes vite
+# resolve the default mode; passing --mode development here forces development
+# bundles that disagree with NODE_ENV=production at runtime.
+RUN pnpm build
 
 ENV NODE_ENV=production
 ENV PORT=4310
