@@ -1,3 +1,7 @@
+
+[![CI](https://github.com/innotelinc/chef/actions/workflows/ci.yml/badge.svg)](https://github.com/innotelinc/chef/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://chef.convex.dev/github-header-dark.svg">
@@ -15,6 +19,18 @@ Development of the Chef is led by the Convex team. We
 [love receiving feedback](https://discord.gg/convex).
 
 This project is a fork of the `stable` branch of [bolt.diy](https://github.com/stackblitz-labs/bolt.diy).
+
+## Why Chef
+
+| Problem | Answer |
+| --- | --- |
+| A generated snippet is not an application. | The agent builds a project, runs it and iterates against the result. |
+| The work is lost when the chat closes. | The project lives in a workspace that can be opened and deployed. |
+| A hosted builder holds the code. | Run the agent on your own gateway and keep the workspace. |
+
+Its place in the stack is [docs/stack.md](docs/stack.md); the canonical
+definition of the shared layers is the
+[Innotel Platform Stack](https://github.com/innotelinc/innotel-platform-stack).
 
 ## Getting Started
 
@@ -118,3 +134,8 @@ Note: Chef is accessible at http://127.0.0.1:{port}/ and will not work properly 
 - `template/` contains the template that we use to start all Chef projects.
 
 - `test-kitchen/` contains a test harness for the Chef agent loop.
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE). Copyright © 2026 Innotel Inc. and the
+upstream authors. Upstream material remains under its own licence.
