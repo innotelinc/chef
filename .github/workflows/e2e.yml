@@ -12,7 +12,7 @@ on:
 jobs:
   e2e-test:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: inputs.run_e2e
     env:
       CHEF_EVAL_USER_EMAIL: ${{ secrets.CHEF_EVAL_USER_EMAIL }}
