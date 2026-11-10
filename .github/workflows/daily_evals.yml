@@ -23,4 +23,12 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
           USE_OPENAI: false
-        run: cd test-kitchen && npx braintrust eval initialGeneration.eval.ts
+        # The eval needs a BrainTrust key to record results. Without one the CLI
+        # aborts before running a case, so the job states that it did not run
+        # rather than failing daily on a secret the repository may not carry.
+        run: |
+          if [ -z "${BRAINTRUST_API_KEY}" ]; then
+            echo "::notice::BRAINTRUST_API_KEY is not set — the daily eval was skipped, not run."
+            exit 0
+          fi
+          cd test-kitchen && npx braintrust eval initialGeneration.eval.ts
